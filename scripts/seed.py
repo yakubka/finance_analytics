@@ -13,8 +13,8 @@ import os
 import random
 import sys
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from decimal import Decimal
+from pathlib import Path
 
 # Make sure the app package is importable when running from repo root
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -33,6 +33,11 @@ DATABASE_URL = os.getenv(
 
 NUM_USERS = 120
 NUM_TRANSACTIONS = 12_000
+
+# Use enum members directly — never .value strings.
+# With native_enum=False + values_callable, SQLAlchemy maps enum members to
+# their .value for storage. Passing raw strings bypasses this mapping and can
+# cause silent type mismatches or future regressions if enum values change.
 STATUSES = [TransactionStatus.SUCCESSFUL, TransactionStatus.FAILED]
 TYPES = [TransactionType.PAYMENT, TransactionType.INVOICE]
 
@@ -51,19 +56,18 @@ def _random_dt_last_2_years() -> datetime:
 def _generate_users(n: int) -> list[dict]:
     """Generate n unique user records."""
     seen_emails: set[str] = set()
-    users = []
+    users: list[dict] = []
     while len(users) < n:
         email = fake.unique.email()
         if email in seen_emails:
             continue
         seen_emails.add(email)
-        registered = _random_dt_last_2_years()
         users.append(
             {
                 "first_name": fake.first_name(),
                 "last_name": fake.last_name(),
                 "email": email,
-                "registered_at": registered,
+                "registered_at": _random_dt_last_2_years(),
                 "is_active": rng.random() > 0.05,  # 95 % active
             }
         )
@@ -77,20 +81,28 @@ def _generate_transactions(user_ids: list[int], n: int) -> list[dict]:
     Distribution:
       - Statuses: ~60 % successful, ~40 % failed
       - Types:    ~55 % payment,    ~45 % invoice
+
+    NOTE: status and type are stored as enum *members* (not .value strings).
+    SQLAlchemy's bind_processor (via values_callable) converts them to the
+    correct string value at query time.
     """
-    transactions = []
+    transactions: list[dict] = []
     for _ in range(n):
-        status = rng.choices(STATUSES, weights=[60, 40])[0]
-        tx_type = rng.choices(TYPES, weights=[55, 45])[0]
+        # Pass enum members, not status.value — keeps typing consistent with
+        # the Mapped[TransactionStatus] / Mapped[TransactionType] annotations.
+        status: TransactionStatus = rng.choices(STATUSES, weights=[60, 40])[0]
+        tx_type: TransactionType = rng.choices(TYPES, weights=[55, 45])[0]
         amount = Decimal(str(round(rng.uniform(1.0, 1000.0), 2)))
         transactions.append(
             {
                 "user_id": rng.choice(user_ids),
                 "amount": amount,
-                "status": status.value,
-                "type": tx_type.value,
+                "status": status,           # enum member, NOT status.value
+                "type": tx_type,            # enum member, NOT tx_type.value
                 "paid_at": _random_dt_last_2_years(),
-                "description": fake.sentence(nb_words=6) if rng.random() > 0.4 else None,
+                "description": (
+                    fake.sentence(nb_words=6) if rng.random() > 0.4 else None
+                ),
             }
         )
     return transactions
@@ -99,13 +111,18 @@ def _generate_transactions(user_ids: list[int], n: int) -> list[dict]:
 async def seed() -> None:
     """Drop existing data and populate with fresh mock records."""
     engine = create_async_engine(DATABASE_URL, echo=False)
-    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    session_factory = async_sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
 
     async with session_factory() as session:
         # Clear existing data to allow repeated seeding
-        await session.execute(text("TRUNCATE TABLE transactions RESTART IDENTITY CASCADE"))
-        await session.execute(text("TRUNCATE TABLE users RESTART IDENTITY CASCADE"))
-        await session.flush()
+        await session.execute(
+            text("TRUNCATE TABLE transactions RESTART IDENTITY CASCADE")
+        )
+        await session.execute(
+            text("TRUNCATE TABLE users RESTART IDENTITY CASCADE")
+        )
         await session.commit()
         print("Cleared existing data.")
 
@@ -118,16 +135,20 @@ async def seed() -> None:
         await session.commit()
         print(f"Inserted {len(user_ids)} users.")
 
-        # --- Transactions (inserted in batches to keep memory low) ---
+        # --- Transactions (batched to keep memory low) ---
         tx_dicts = _generate_transactions(user_ids, NUM_TRANSACTIONS)
         batch_size = 1_000
         total_inserted = 0
+
         for i in range(0, len(tx_dicts), batch_size):
             batch = tx_dicts[i : i + batch_size]
             session.add_all([Transaction(**t) for t in batch])
             await session.commit()
             total_inserted += len(batch)
-            print(f"  Transactions inserted: {total_inserted}/{NUM_TRANSACTIONS}", end="\r")
+            print(
+                f"  Transactions inserted: {total_inserted}/{NUM_TRANSACTIONS}",
+                end="\r",
+            )
 
         print(f"\nInserted {total_inserted} transactions. Seeding complete. ✓")
 

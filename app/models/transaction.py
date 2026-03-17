@@ -41,26 +41,34 @@ class Transaction(Base):
         Enum(
             TransactionStatus,
             name="transaction_status",
-            create_type=False,
-            native_enum=False,  # FIX: prevents asyncpg from using its own native enum
-                                # codec which encodes by .name ("SUCCESSFUL") instead
-                                # of .value ("successful"). With native_enum=False
-                                # SQLAlchemy passes values as plain strings via its
-                                # own bind_processor where values_callable is respected.
-            values_callable=lambda x: [e.value for e in x],
+            # native_enum=False: SQLAlchemy stores the value as VARCHAR instead
+            # of a native PostgreSQL ENUM type. This is required because asyncpg
+            # cannot implicitly cast plain Python strings to native PG ENUM types
+            # during bulk INSERT, causing DatatypeMismatchError.
+            #
+            # create_type is intentionally omitted: it is only meaningful when
+            # native_enum=True. With native_enum=False SQLAlchemy never attempts
+            # to CREATE a PG ENUM type, so specifying create_type=False alongside
+            # native_enum=False is contradictory and causes unpredictable behaviour
+            # in Alembic autogenerate.
+            native_enum=False,
+            # values_callable ensures SQLAlchemy uses enum .value ("successful")
+            # not enum .name ("SUCCESSFUL") as the stored string.
+            values_callable=lambda obj: [e.value for e in obj],
         ),
         nullable=False,
+        index=True,
     )
 
     type: Mapped[TransactionType] = mapped_column(
         Enum(
             TransactionType,
             name="transaction_type",
-            create_type=False,
-            native_enum=False,  # same fix as above
-            values_callable=lambda x: [e.value for e in x],
+            native_enum=False,
+            values_callable=lambda obj: [e.value for e in obj],
         ),
         nullable=False,
+        index=True,
     )
 
     paid_at: Mapped[datetime] = mapped_column(
@@ -86,4 +94,6 @@ class Transaction(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Transaction id={self.id} amount={self.amount} status={self.status}>"
+        return (
+            f"<Transaction id={self.id} amount={self.amount} status={self.status}>"
+        )
