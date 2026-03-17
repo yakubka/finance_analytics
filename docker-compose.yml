@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: analytics_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: analytics
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d analytics"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: analytics_app
+    # FIXED: was "unless-stopped", which caused an infinite restart loop when
+    # the Alembic migration failed.  "on-failure" stops after a real error so
+    # the crash is visible in logs without flooding them with repeated traces.
+    restart: on-failure
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/analytics
+      DATABASE_URL_SYNC: postgresql+psycopg2://postgres:postgres@db:5432/analytics
+      APP_HOST: "0.0.0.0"
+      APP_PORT: "8000"
+      DEBUG: "false"
+      SEED_DB: "${SEED_DB:-false}"
+      CSV_PATH: /app/user_country.csv
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./user_country.csv:/app/user_country.csv:ro
+
+volumes:
+  postgres_data:
