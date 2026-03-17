@@ -15,7 +15,6 @@ import sys
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
-
 # Make sure the app package is importable when running from repo root
 sys.path.insert(0, str(Path(__file__).parent.parent))
 

@@ -15,6 +15,4 @@ pytest-cov==5.0.0
 anyio==4.4.0
 faker==25.2.0
 greenlet==3.0.3
-# FIXED: aiosqlite was missing; conftest.py uses sqlite+aiosqlite:///:memory:
-# for the test database, which requires this driver at import time.
 aiosqlite==0.20.0
