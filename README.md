@@ -54,7 +54,7 @@ analytics_api/
 ### 1. Clone and configure
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/yakubka/finance_analytics.git
 cd analytics_api
 cp .env.example .env
 ```
