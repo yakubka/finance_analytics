@@ -51,12 +51,17 @@ analytics_api/
 
 ## Quick Start (Docker)
 
-### 1. Clone and configure
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/yakubka/finance_analytics.git
 cd analytics_api
-cp .env.example .env
+```
+
+All configuration has sensible defaults built into `app/config.py` so no `.env` file is required for local Docker usage. If you want to override any value, copy the example and edit it:
+
+```bash
+cp .env.example .env   # optional
 ```
 
 ### 2. Start services
@@ -104,7 +109,7 @@ Returns aggregated transaction metrics for a configurable date range.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `start_date` | `YYYY-MM-DD` | 30 days ago | Range start (inclusive) |
+| `start_date` | `YYYY-MM-DD` | one calendar month ago | Range start (inclusive) |
 | `end_date` | `YYYY-MM-DD` | today | Range end (inclusive) |
 | `status` | `successful` / `failed` / `all` | `all` | Filter by status |
 | `type` | `payment` / `invoice` / `all` | `all` | Filter by type |
